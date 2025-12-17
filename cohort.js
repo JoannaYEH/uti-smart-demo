@@ -1,10 +1,9 @@
 import { evaluateUtiCase } from "./uti_rules.js";
 import { getStoredDemoPatients } from "./demo_builder.js";
 
-const FHIR_BASE = "https://thas.mohw.gov.tw/v/r4/fhir";
-const EXT_URL = "https://cch.org.tw/fhir/StructureDefinition/uti-demo-input";
+import { FHIR_BASE, EXT_URL } from "./config.js";
 
-const FALLBACK_DEMO_PATIENTS = [
+const FALLBACK = [
   { title: "UTI-1a", patientId: "672841", expected: "1a" },
   { title: "UTI-1b", patientId: "672842", expected: "1b" },
   { title: "UTI-2a", patientId: "672843", expected: "2a" },
@@ -16,27 +15,15 @@ const FALLBACK_DEMO_PATIENTS = [
 function el(id) { return document.getElementById(id); }
 
 async function fetchJson(url) {
-  const r = await fetch(url, { headers: { "Accept": "application/fhir+json" } });
+  const r = await fetch(url, { headers: { Accept: "application/fhir+json" } });
   if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
-  return await r.json();
+  return r.json();
 }
 
 function extractDemoCase(patient) {
-  const exts = patient.extension || [];
-  const ext = exts.find(e => e.url === EXT_URL);
-  if (!ext || !ext.valueString) return null;
+  const ext = (patient.extension || []).find(e => e.url === EXT_URL);
+  if (!ext?.valueString) return null;
   try { return JSON.parse(ext.valueString); } catch { return null; }
-}
-
-function mainReason(result) {
-  const rs = result.reasons || [];
-  const cls = rs.find(x => x.step === "classify");
-  if (cls && cls.ok === false) return cls.reason || "classify_failed";
-  const adm = rs.find(x => x.step === "admission_day3");
-  if (adm && adm.ok === false) return "exclude: admission day < 3";
-  const inf = rs.find(x => x.step === "infection_day");
-  if (inf && inf.ok === false) return "exclude: no symptom in ±3d window";
-  return result.ok ? "included" : "excluded";
 }
 
 function escapeHtml(s) {
@@ -49,22 +36,20 @@ function escapeHtml(s) {
 function renderRow(demo, patientRef, result) {
   const tbody = el("rows");
   const tr = document.createElement("tr");
-
   const got = result.ok ? result.category : "exclude";
   const match = got === demo.expected;
 
   tr.innerHTML = `
-    <td><div><b>${demo.title}</b></div><div class="mono">expected: ${demo.expected}</div></td>
+    <td><b>${demo.title}</b><div class="mono">expected: ${demo.expected}</div></td>
     <td class="mono">${patientRef}</td>
     <td>${result.ok ? `<span class="ok">✅ ${got}</span>` : `<span class="bad">❌ exclude</span>`}
-        <div class="mono">match: ${match ? "✅" : "⚠️"}</div>
+      <div class="mono">match: ${match ? "✅" : "⚠️"}</div>
     </td>
     <td class="mono">${result.infectionDay ?? ""}</td>
     <td class="mono">${result.hasCatheter ?? ""}</td>
-    <td class="mono">${mainReason(result)}</td>
+    <td class="mono">${result.ok ? "included" : "excluded"}</td>
     <td>
-      <details>
-        <summary>展開</summary>
+      <details><summary>展開</summary>
         <pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;">${escapeHtml(JSON.stringify(result.reasons || [], null, 2))}</pre>
       </details>
     </td>
@@ -72,48 +57,55 @@ function renderRow(demo, patientRef, result) {
   tbody.appendChild(tr);
 }
 
-function getDemoPatientsFromStorageOrFallback() {
+function renderFatal(msg) {
+  const tbody = el("rows");
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td colspan="7" class="mono" style="color:#c00;">${escapeHtml(msg)}</td>`;
+  tbody.appendChild(tr);
+}
+
+function getList() {
   const stored = getStoredDemoPatients();
   const list = stored?.patients?.length ? stored.patients : null;
-
-  // stored.patients 可能包含 patientRef/title/expected，我們只取 cohort 需要的欄位
-  if (list) {
-    console.log("Using stored demo patients from localStorage:", list);
-    return list.map(p => ({
-      title: p.title ?? p.patientRef ?? "Demo",
-      patientId: (p.patientId ?? "").toString(),
-      expected: p.expected ?? "unknown"
-    }));
-  }
-
-  console.log("No stored demo patients. Using fallback fixed IDs.");
-  return FALLBACK_DEMO_PATIENTS;
+  return list ?? FALLBACK;
 }
 
 async function run() {
-  el("fhir-base").textContent = FHIR_BASE;
+  // 先塞一列，保證你看到「JS 有跑」
   el("rows").innerHTML = "";
+  renderFatal("Loading…（若一直停在這裡，請看 Console 錯誤）");
 
-  const DEMO_PATIENTS = getDemoPatientsFromStorageOrFallback();
+  try {
+    el("fhir-base").textContent = FHIR_BASE;
+    el("rows").innerHTML = "";
 
-  for (const demo of DEMO_PATIENTS) {
-    const patientRef = `Patient/${demo.patientId}`;
-    try {
-      const pat = await fetchJson(`${FHIR_BASE}/Patient/${demo.patientId}`);
-      const demoCase = extractDemoCase(pat);
+    const DEMO_PATIENTS = getList();
 
-      if (!demoCase) {
-        renderRow(demo, patientRef, { ok: false, reasons: [{ step: "load_demoCase", ok: false, reason: "missing_extension" }] });
-        continue;
+    for (const demo of DEMO_PATIENTS) {
+      const pid = String(demo.patientId ?? "");
+      const patientRef = `Patient/${pid}`;
+
+      try {
+        const pat = await fetchJson(`${FHIR_BASE}/Patient/${pid}`);
+        const demoCase = extractDemoCase(pat);
+
+        if (!demoCase) {
+          renderRow(demo, patientRef, { ok: false, reasons: [{ step: "load_demoCase", ok: false, reason: "missing_extension" }] });
+          continue;
+        }
+
+        const input = JSON.parse(JSON.stringify(demoCase));
+        const result = evaluateUtiCase(input);
+        renderRow(demo, patientRef, result);
+
+      } catch (e) {
+        renderRow(demo, patientRef, { ok: false, reasons: [{ step: "fetch_patient", ok: false, error: String(e) }] });
       }
-
-      const input = JSON.parse(JSON.stringify(demoCase));
-      const result = evaluateUtiCase(input);
-      renderRow(demo, patientRef, result);
-
-    } catch (e) {
-      renderRow(demo, patientRef, { ok: false, reasons: [{ step: "fetch_patient", ok: false, error: String(e) }] });
     }
+  } catch (e) {
+    el("rows").innerHTML = "";
+    renderFatal("cohort.js crashed: " + String(e));
+    console.error(e);
   }
 }
 
