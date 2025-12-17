@@ -12,10 +12,42 @@
 </head>
 <body>
   <h2>UTI SMART on FHIR Demo</h2>
+  <p><a href="cohort.html">→ 打開 6 位病人 Cohort 結果頁</a></p>
+
   <div id="status">Loading…</div>
   <pre id="output"></pre>
+  <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+    <button id="btn-build">建立/重建 6 位 Demo 病人</button>
+    <a href="cohort.html">開啟 Cohort 結果頁</a>
+    </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
-  <script type="module" src="app.js"></script>
+    <script type="module">
+    import { buildSixDemoPatients, getStoredDemoPatients } from "./demo_builder.js";
+
+    const btn = document.getElementById("btn-build");
+
+    btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.textContent = "建立中…";
+        try {
+        const res = await buildSixDemoPatients();
+        alert(`完成！已建立 ${res.patients.length} 位 demo 病人。\n將開啟 cohort.html`);
+        location.href = "cohort.html";
+        } catch (e) {
+        alert("建立失敗：" + String(e));
+        } finally {
+        btn.disabled = false;
+        btn.textContent = "建立/重建 6 位 Demo 病人";
+        }
+    });
+
+    // 若已存在先前建立的 demo，就顯示提示（可選）
+    const stored = getStoredDemoPatients();
+    if (stored?.patients?.length) {
+        console.log("Stored demo patients:", stored);
+    }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
