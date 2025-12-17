@@ -1,5 +1,6 @@
 // demo_builder.js
 const FHIR_BASE = "https://thas.mohw.gov.tw/v/r4/fhir";
+//const FHIR_BASE = "https://royal-shape-4518.joanna883311.workers.dev/fhir";
 const EXT_URL = "https://cch.org.tw/fhir/StructureDefinition/uti-demo-input";
 const LS_KEY = "uti_demo_patient_ids_v1";
 
