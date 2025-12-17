@@ -1,3 +1,23 @@
-<!doctype html>
-<html><head><meta charset="utf-8"><title>launch</title></head>
-<body>launch placeholder</body></html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>UTI SMART Demo - Launch</title>
+</head>
+<body>
+  <p>Launching SMART App…</p>
+
+  <!-- SMART on FHIR JS -->
+  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+  <script>
+    const CLIENT_ID = "my-uti-smart-app-client-id";
+
+    FHIR.oauth2.authorize({
+      client_id: CLIENT_ID,
+      scope: "launch openid fhirUser patient/*.read",
+      redirectUri: "index.html"
+    });
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>UTI Demo Cohort</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; }
+    h2 { margin-bottom: 8px; }
+    .hint { color:#555; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 10px; vertical-align: top; }
+    th { background: #f6f8fa; text-align: left; }
+    .ok { color: #0a7; font-weight: 700; }
+    .bad { color: #c00; font-weight: 700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    details { max-width: 720px; }
+    .toolbar { display:flex; gap:10px; align-items:center; margin: 12px 0 18px; flex-wrap: wrap; }
+    button { padding: 8px 12px; border-radius: 10px; border: 1px solid #ccc; background:#fff; cursor:pointer; }
+    button:hover { background:#f6f8fa; }
+    input { padding: 8px 10px; border-radius: 10px; border: 1px solid #ccc; min-width: 420px; }
+  </style>
+</head>
+<body>
+  <h2>UTI SMART Demo — Cohort Results</h2>
+  <div class="hint">
+    讀取 THAS FHIR 的 6 位 demo Patient（從 extension 取出 demoCase），逐一套用前端規則引擎並顯示結果。
+  </div>
+
+  <div class="toolbar">
+    <button id="btn-run">重新計算</button>
+    <span>FHIR Base:</span>
+    <span class="mono" id="fhir-base">https://thas.mohw.gov.tw/v/r4/fhir</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Demo</th>
+        <th>Patient</th>
+        <th>結果</th>
+        <th>infectionDay</th>
+        <th>導管</th>
+        <th>主要原因（或排除原因）</th>
+        <th>reasons</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script type="module" src="cohort.js"></script>
+</body>
+</html>

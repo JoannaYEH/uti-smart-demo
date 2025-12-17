@@ -145,6 +145,30 @@ export function classifyByAgeAndSymptoms(caseData, hasCatheter) {
 export function evaluateUtiCase(input) {
   const reasons = [];
 
+   // Treat urinary retention as a general urinary symptom contributing to symptomDates (for 1a/1b too)
+  if (input.urinaryRetentionDate && input.hasBladderScanOrStraightCath != null) {
+    const addUr = urinaryRetentionAsSymptomDate(
+      !!input.hasBladderScanOrStraightCath,
+      input.nursingNoteText || "",
+      input.urinaryRetentionDate
+    );
+    reasons.push({ step: "urinary_retention_symptomdate", ...addUr });
+
+    if (addUr.ok) {
+      input.symptomDates = Array.from(new Set([...(input.symptomDates || []), addUr.symptomDate])).sort();
+      // optional: if retention hit, it counts as urinary symptom
+      if (input.urinaryOtherSymptom == null) input.urinaryOtherSymptom = true;
+    }
+  }
+
+  // Auto-derive urinaryOtherSymptom from urinary retention rule (optional)
+  // If you already pass urinaryOtherSymptom=true/false, we respect it.
+  if (input.urinaryOtherSymptom == null) {
+    const ur = urinaryRetentionSymptom(!!input.hasBladderScanOrStraightCath, input.nursingNoteText || "");
+    reasons.push({ step: "urinary_retention", ...ur });
+    input.urinaryOtherSymptom = ur.ok;
+  }
+
   // A) infection day based on symptom window around lab date
   const inf = computeInfectionDay(input.labDate, input.symptomDates);
   reasons.push({ step: "infection_day", ...inf });
@@ -172,3 +196,54 @@ export function evaluateUtiCase(input) {
     reasons
   };
 }
+
+/**
+ * Urinary retention symptom rule (for age >= 1):
+ * - same day has bladder scan OR straight cath procedure (you pass in boolean)
+ * - nursing note text contains "尿" or "尿管" nearby a volume > 100 mL/ml/cc/㏄/毫升 within ±20 chars
+ */
+export function urinaryRetentionSymptom(hasScanOrStraightCath, nursingNoteText) {
+  if (!hasScanOrStraightCath) return { ok: false, reason: "no_scan_or_straight_cath" };
+  const text = nursingNoteText || "";
+  if (!text) return { ok: false, reason: "empty_note" };
+
+  // Find all positions of keywords 尿 / 尿管
+  const keywords = ["尿管", "尿"]; // 尿管先放前面避免被"尿"吃掉
+  const unitsRe = /(mL|ml|cc|㏄|毫升)/;
+  const numRe = /(\d{2,4})\s*(mL|ml|cc|㏄|毫升)/g;
+
+  for (const kw of keywords) {
+    let idx = text.indexOf(kw);
+    while (idx !== -1) {
+      const start = Math.max(0, idx - 20);
+      const end = Math.min(text.length, idx + kw.length + 20);
+      const window = text.slice(start, end);
+
+      // reset for each window to avoid skipping matches
+      numRe.lastIndex = 0;
+      let m;
+      while ((m = numRe.exec(window)) !== null) {
+        const value = parseInt(m[1], 10);
+        const unit = m[2];
+        if (Number.isFinite(value) && value > 100 && unitsRe.test(unit)) {
+          return { ok: true, reason: "urinary_retention_volume_gt_100", value, unit, window };
+        }
+      }
+
+      idx = text.indexOf(kw, idx + kw.length);
+    }
+  }
+
+  return { ok: false, reason: "no_volume_gt_100_near_urinary_keyword" };
+}
+
+/**
+ * If urinary retention symptom is hit, treat it as a "symptom present" on symptomDate.
+ * symptomDate: "YYYY-MM-DD" (usually same day as scan/straight-cath record)
+ */
+export function urinaryRetentionAsSymptomDate(hasScanOrStraightCath, nursingNoteText, symptomDate) {
+  const ur = urinaryRetentionSymptom(hasScanOrStraightCath, nursingNoteText);
+  if (!ur.ok) return { ok: false, ur };
+  return { ok: true, symptomDate, ur };
+}
+
