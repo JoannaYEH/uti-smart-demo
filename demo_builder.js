@@ -2,7 +2,7 @@
 import { FHIR_BASE, EXT_URL, LS_KEY } from "./config.js";
 
 const DEMOS = [
-  { title: "UTI-1a", expected: "1a", demoCase: {
+  { title: "UTI-1a", gender:"female", expected: "1a", demoCase: {
     admitDate:"2025-12-10", labDate:"2025-12-13", symptomDates:[],
     ageYears:40, tempC:38.6,
     catheterPeriods:[{start:"2025-12-10", end:"2025-12-13"}],
@@ -10,7 +10,7 @@ const DEMOS = [
     nursingNoteText:"膀胱掃描顯示尿量 120 mL，評估單導。",
     infantKeywordsHit:false, urinaryOtherSymptom:null
   }},
-  { title: "UTI-1b", expected: "1b", demoCase: {
+  { title: "UTI-1b", gender:"male", expected: "1b", demoCase: {
     admitDate:"2025-12-10", labDate:"2025-12-13", symptomDates:[],
     ageYears:30, tempC:38.3,
     catheterPeriods:[],
@@ -18,7 +18,7 @@ const DEMOS = [
     nursingNoteText:"病人排尿困難，膀胱掃描尿量 150 mL，已評估單導。",
     infantKeywordsHit:false, urinaryOtherSymptom:null
   }},
-  { title: "UTI-2a", expected: "2a", demoCase: {
+  { title: "UTI-2a", gender:"female", expected: "2a", demoCase: {
     admitDate:"2025-12-01", labDate:"2025-12-04", symptomDates:["2025-12-04"],
     ageYears:0.3, tempC:35.8,
     catheterPeriods:[{start:"2025-12-01", end:"2025-12-04"}],
@@ -26,7 +26,7 @@ const DEMOS = [
     urinaryRetentionDate:null, hasBladderScanOrStraightCath:false,
     nursingNoteText:"", urinaryOtherSymptom:null
   }},
-  { title: "UTI-2b", expected: "2b", demoCase: {
+  { title: "UTI-2b", gender:"male", expected: "2b", demoCase: {
     admitDate:"2025-12-01", labDate:"2025-12-04", symptomDates:["2025-12-05"],
     ageYears:0.8, tempC:38.2,
     catheterPeriods:[],
@@ -34,7 +34,7 @@ const DEMOS = [
     urinaryRetentionDate:null, hasBladderScanOrStraightCath:false,
     nursingNoteText:"", urinaryOtherSymptom:null
   }},
-  { title: "EX-AdmDay12", expected: "exclude", demoCase: {
+  { title: "EX-AdmDay12", gender:"female", expected: "exclude", demoCase: {
     admitDate:"2025-12-10", labDate:"2025-12-11", symptomDates:["2025-12-11"],
     ageYears:50, tempC:38.5,
     catheterPeriods:[{start:"2025-12-10", end:"2025-12-13"}],
@@ -42,7 +42,7 @@ const DEMOS = [
     urinaryRetentionDate:null, hasBladderScanOrStraightCath:false,
     nursingNoteText:"", urinaryOtherSymptom:true
   }},
-  { title: "EX->65FeverOnly", expected: "exclude", demoCase: {
+  { title: "EX->65FeverOnly", gender:"male", expected: "exclude", demoCase: {
     admitDate:"2025-12-10",
     labDate:"2025-12-13",
     // ✅ 只有發燒：沒有任何其他徵象日
@@ -76,7 +76,7 @@ async function postPatient(demo, authHeader) {
   const patient = {
     resourceType: "Patient",
     name: [{ family: "Demo", given: [demo.title] }],
-    gender: "other",
+    gender: demo.gender || "unknown",
     birthDate: "1970-01-01",
     extension: [{
       url: EXT_URL,
@@ -130,4 +130,10 @@ export function getStoredDemoPatients() {
   const raw = localStorage.getItem(LS_KEY);
   if (!raw) return null;
   try { return JSON.parse(raw); } catch { return null; }
+}
+
+
+export async function buildOrRebuildDemoPatients() {
+  
+  return await buildSixDemoPatients();//getStoredDemoPatients();
 }

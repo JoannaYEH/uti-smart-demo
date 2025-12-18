@@ -53,6 +53,26 @@ export function computeInfectionDay(labDate, symptomDates) {
   return { ok: true, infectionDay: earliest, rule: "symptom_before_lab", window: { start, end }, inWindow };
 }
 
+function symptomWindowOk(labDate, symptomDates, tempC, ageYears) {
+  // 在 ±3 天視窗內，若有「其他徵象」則 OK
+  const start = addDays(labDate, -3);
+  const end = addDays(labDate, 3);
+  const hasOther = (symptomDates || []).some(d => inRange(d, start, end));
+
+  // 另外：體溫異常也算徵象（不需要有日期資料，demo 先視為採檢日同天量測）
+  const tempAbn =
+    (ageYears < 1)
+      ? (tempC != null && (tempC >= 38.1 || tempC <= 35.9))
+      : (tempC != null && tempC >= 38.1);
+
+  return {
+    ok: hasOther || tempAbn,
+    hasOther,
+    tempAbn,
+    window: { start, end }
+  };
+}
+
 /**
  * Admission day rule:
  * - admitDay = day 1
@@ -170,7 +190,20 @@ export function evaluateUtiCase(input) {
   }
 
   // A) infection day based on symptom window around lab date
-  const inf = computeInfectionDay(input.labDate, input.symptomDates);
+ // A0) Symptom window gate: within ±3 days, either temp abnormal OR other symptom exists
+  const sw = symptomWindowOk(input.labDate, input.symptomDates, input.tempC, input.ageYears);
+  reasons.push({ step: "symptom_window", ...sw });
+
+  if (!sw.ok) {
+    return { ok: false, reasons };
+  }
+  let inf;
+  if (sw.hasOther) {
+    inf = computeInfectionDay(input.labDate, input.symptomDates);
+  } else {
+    // only temp abnormal (no other symptom): infection day = labDate
+    inf = { ok: true, infectionDay: input.labDate, rule: "temp_only_use_labDate" };
+  }
   reasons.push({ step: "infection_day", ...inf });
   if (!inf.ok) return { ok: false, reasons };
 

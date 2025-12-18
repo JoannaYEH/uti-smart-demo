@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2025-12-17T07:34:11.815051+00:00",
+  "fhirBase": "https://thas.mohw.gov.tw/v/r4/fhir",
+  "extensionUrl": "https://cch.org.tw/fhir/StructureDefinition/uti-demo-input",
+  "patients": [
+    {
+      "title": "UTI-1a",
+      "patientId": "672841",
+      "patientRef": "Patient/672841"
+    },
+    {
+      "title": "UTI-1b",
+      "patientId": "672842",
+      "patientRef": "Patient/672842"
+    },
+    {
+      "title": "UTI-2a",
+      "patientId": "672843",
+      "patientRef": "Patient/672843"
+    },
+    {
+      "title": "UTI-2b",
+      "patientId": "672844",
+      "patientRef": "Patient/672844"
+    },
+    {
+      "title": "EX-AdmDay12",
+      "patientId": "672845",
+      "patientRef": "Patient/672845"
+    },
+    {
+      "title": "EX->65FeverOnly",
+      "patientId": "672846",
+      "patientRef": "Patient/672846"
+    }
+  ]
+}

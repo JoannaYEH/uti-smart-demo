@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>院內泌尿道感染輔助收案系統｜離線展示</title>
+  <style>
+    :root{
+      --bg:#f6f8fa; --card:#fff; --text:#111827; --muted:#6b7280;
+      --border:#e5e7eb; --ok:#2da44e; --bad:#cf222e; --brand:#1f6feb;
+    }
+    body{ margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; background:var(--bg); color:var(--text); }
+    .container{ max-width:1100px; margin:0 auto; padding:20px; }
+    .header{
+      display:flex; gap:16px; align-items:flex-start; justify-content:space-between;
+      background:var(--card); border:1px solid var(--border); border-radius:16px;
+      padding:16px 18px; box-shadow:0 1px 2px rgba(0,0,0,.04);
+    }
+    .title{ display:flex; gap:12px; align-items:flex-start; }
+    .logo{
+      width:42px; height:42px; border-radius:12px; background:rgba(31,111,235,.12);
+      display:flex; align-items:center; justify-content:center; color:var(--brand); font-weight:800;
+    }
+    h1{ margin:0; font-size:20px; letter-spacing:.2px; }
+    .subtitle{ margin:4px 0 0; color:var(--muted); font-size:13px; line-height:1.4; }
+    .meta{ text-align:right; }
+    .badge{ display:inline-block; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; font-weight:600;}
+    .meta small{ display:block; margin-top:6px; color:var(--muted); }
+    .actions{ margin:14px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .btn{
+      border:1px solid var(--border); background:var(--card); color:var(--text);
+      padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:600;
+    }
+    .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+    .hint{ color:var(--muted); font-size:12px; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; background:var(--card);
+      border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+    thead th{ text-align:left; font-size:12px; color:var(--muted); background:#fafafa; border-bottom:1px solid var(--border); padding:10px; }
+    tbody td{ padding:10px; border-bottom:1px solid var(--border); vertical-align:top; font-size:13px; }
+    tbody tr:last-child td{ border-bottom:none; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px; }
+    .ok{ color:var(--ok); font-weight:800; }
+    .bad{ color:var(--bad); font-weight:800; }
+    details pre{ background:#0b1020; color:#d1d5db; padding:10px; border-radius:12px; overflow:auto; }
+    .tag{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid var(--border); background:#fff; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="title">
+      <div class="logo">UTI</div>
+      <div>
+        <h1>院內泌尿道感染輔助收案系統</h1>
+        <div class="subtitle">
+          離線展示（不依賴 FHIR）｜同一套規則引擎，資料來源可由 FHIR 或離線 JSON 置換
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <span class="badge">Offline Demo v0.3</span>
+      <small class="mono">Data: Embedded 6 cases</small>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="btn-run">重新整理表格</button>
+    <a class="btn" href="./index.html">回主頁</a>
+    <span class="hint">用途：FHIR 連不上時，仍可讓評審看到 6 位示範病例的收案結果。</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Demo</th>
+        <th>病人摘要</th>
+        <th>採檢日</th>
+        <th>感染日</th>
+        <th>導管</th>
+        <th>徵兆日（體溫 / 其他）</th>
+        <th>收案判定</th>
+        <th>關鍵理由</th>
+        <th>細節</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+/* ============================
+   UTI rule-tree engine (offline)
+   ============================ */
+
+function toDateOnly(d) {
+  if (d instanceof Date) return d;
+  return new Date(d + "T00:00:00");
+}
+function daysBetween(a, b) {
+  const ms = toDateOnly(b) - toDateOnly(a);
+  return Math.floor(ms / (24 * 3600 * 1000));
+}
+function addDays(dateStr, n) {
+  const d = toDateOnly(dateStr);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function inRange(dateStr, startStr, endStr) {
+  const t = toDateOnly(dateStr).getTime();
+  return t >= toDateOnly(startStr).getTime() && t <= toDateOnly(endStr).getTime();
+}
+
+function urinaryRetentionSymptom(hasScanOrStraightCath, nursingNoteText) {
+  if (!hasScanOrStraightCath) return { ok: false, reason: "no_scan_or_straight_cath" };
+  const text = nursingNoteText || "";
+  if (!text) return { ok: false, reason: "empty_note" };
+
+  const keywords = ["尿管", "尿"];
+  const unitsRe = /(mL|ml|cc|㏄|毫升)/;
+  const numRe = /(\d{2,4})\s*(mL|ml|cc|㏄|毫升)/g;
+
+  for (const kw of keywords) {
+    let idx = text.indexOf(kw);
+    while (idx !== -1) {
+      const start = Math.max(0, idx - 20);
+      const end = Math.min(text.length, idx + kw.length + 20);
+      const window = text.slice(start, end);
+
+      let m;
+      while ((m = numRe.exec(window)) !== null) {
+        const value = parseInt(m[1], 10);
+        const unit = m[2];
+        if (Number.isFinite(value) && value > 100 && unitsRe.test(unit)) {
+          return { ok: true, reason: "urinary_retention_volume_gt_100", value, unit, window };
+        }
+      }
+      idx = text.indexOf(kw, idx + kw.length);
+    }
+  }
+  return { ok: false, reason: "no_volume_gt_100_near_urinary_keyword" };
+}
+
+function urinaryRetentionAsSymptomDate(hasScanOrStraightCath, nursingNoteText, symptomDate) {
+  const ur = urinaryRetentionSymptom(hasScanOrStraightCath, nursingNoteText);
+  if (!ur.ok) return { ok: false, ur };
+  return { ok: true, symptomDate, ur };
+}
+
+function computeInfectionDay(labDate, symptomDates) {
+  const start = addDays(labDate, -3);
+  const end = addDays(labDate, 3);
+  const inWindow = (symptomDates || []).filter(d => inRange(d, start, end)).sort();
+  if (inWindow.length === 0) {
+    return { ok: false, reason: "no_symptom_in_window", window: { start, end }, inWindow: [] };
+  }
+  const earliest = inWindow[0];
+  const diff = daysBetween(labDate, earliest); // earliest - labDate
+  if (diff >= 0) {
+    return { ok: true, infectionDay: labDate, rule: "symptom_after_or_on_lab", window: { start, end }, inWindow };
+  }
+  return { ok: true, infectionDay: earliest, rule: "symptom_before_lab", window: { start, end }, inWindow };
+}
+
+function passesAdmissionDay3(admitDate, infectionDay) {
+  const dayIndex = daysBetween(admitDate, infectionDay) + 1; // admit day = 1
+  const ok = dayIndex >= 3;
+  return { ok, dayIndex, threshold: 3 };
+}
+
+function catheterStatus(infectionDay, catheterPeriods) {
+  const periods = catheterPeriods || [];
+  for (const p of periods) {
+    const start = p.start;
+    const end = p.end;
+    const totalDays = daysBetween(start, end) + 1;
+    const inPeriod = inRange(infectionDay, start, end);
+    const dayAfterRemoval = addDays(end, 1) === infectionDay;
+    if (totalDays >= 3 && (inPeriod || dayAfterRemoval)) {
+      return {
+        hasCatheter: true,
+        rule: inPeriod ? "infection_during_catheter_3days" : "infection_day_after_removal_3days",
+        matchedPeriod: p,
+        totalDays
+      };
+    }
+  }
+  return { hasCatheter: false, rule: "no_catheter_meeting_rule" };
+}
+
+function classifyByAgeAndSymptoms(caseData, hasCatheter) {
+  const age = caseData.ageYears;
+  const temp = caseData.tempC;
+
+  if (age < 1) {
+    const tempOk = (temp != null) && (temp >= 38.1 || temp <= 35.9);
+    const kwOk = !!caseData.infantKeywordsHit;
+    if (!tempOk) return { ok: false, reason: "infant_temp_not_ok" };
+    if (!kwOk) return { ok: false, reason: "infant_keywords_not_hit" };
+    return { ok: true, category: hasCatheter ? "2a" : "2b" };
+  }
+
+  const feverOk = (temp != null) && (temp >= 38.1);
+  if (!feverOk) return { ok: false, reason: "no_fever_for_age_ge_1" };
+
+  if (!hasCatheter && age > 65) {
+    if (!caseData.urinaryOtherSymptom) {
+      return { ok: false, reason: "age_gt_65_no_catheter_fever_only" };
+    }
+  }
+
+  return { ok: true, category: hasCatheter ? "1a" : "1b" };
+}
+
+// Symptom window gate: within ±3 days, either temp abnormal OR other symptom exists
+function symptomWindowOk(labDate, symptomDates, tempC, ageYears) {
+  const start = addDays(labDate, -3);
+  const end = addDays(labDate, 3);
+  const hasOther = (symptomDates || []).some(d => inRange(d, start, end));
+
+  const tempAbn =
+    (ageYears < 1)
+      ? (tempC != null && (tempC >= 38.1 || tempC <= 35.9))
+      : (tempC != null && tempC >= 38.1);
+
+  return { ok: hasOther || tempAbn, hasOther, tempAbn, window: { start, end } };
+}
+
+function evaluateUtiCase(input) {
+  const reasons = [];
+
+  // Urinary retention contributes to symptomDates, and can set urinaryOtherSymptom=true if null
+  if (input.urinaryRetentionDate && input.hasBladderScanOrStraightCath != null) {
+    const addUr = urinaryRetentionAsSymptomDate(
+      !!input.hasBladderScanOrStraightCath,
+      input.nursingNoteText || "",
+      input.urinaryRetentionDate
+    );
+    reasons.push({ step: "urinary_retention_symptomdate", ...addUr });
+    if (addUr.ok) {
+      input.symptomDates = Array.from(new Set([...(input.symptomDates || []), addUr.symptomDate])).sort();
+      if (input.urinaryOtherSymptom == null) input.urinaryOtherSymptom = true;
+    }
+  }
+
+  // Derive urinaryOtherSymptom if null
+  if (input.urinaryOtherSymptom == null) {
+    const ur = urinaryRetentionSymptom(!!input.hasBladderScanOrStraightCath, input.nursingNoteText || "");
+    reasons.push({ step: "urinary_retention", ...ur });
+    input.urinaryOtherSymptom = ur.ok;
+  }
+
+  // Symptom window gate: temp abnormal OR other symptom in ±3 days
+  const sw = symptomWindowOk(input.labDate, input.symptomDates, input.tempC, input.ageYears);
+  reasons.push({ step: "symptom_window", ...sw });
+  if (!sw.ok) return { ok: false, reasons };
+
+  // Infection day:
+  // - if there is "other symptom" in window: follow computeInfectionDay rule (earliest before lab -> symptom day; else lab)
+  // - if temp only: infectionDay = labDate
+  let inf;
+  if (sw.hasOther) {
+    inf = computeInfectionDay(input.labDate, input.symptomDates);
+  } else {
+    inf = { ok: true, infectionDay: input.labDate, rule: "temp_only_use_labDate" };
+  }
+  reasons.push({ step: "infection_day", ...inf });
+  if (!inf.ok) return { ok: false, reasons };
+
+  // Admission day >= 3
+  const adm = passesAdmissionDay3(input.admitDate, inf.infectionDay);
+  reasons.push({ step: "admission_day3", ...adm, admitDate: input.admitDate, infectionDay: inf.infectionDay });
+  if (!adm.ok) return { ok: false, reasons };
+
+  // Catheter
+  const cath = catheterStatus(inf.infectionDay, input.catheterPeriods);
+  reasons.push({ step: "catheter", ...cath, infectionDay: inf.infectionDay });
+
+  // Classify
+  const cls = classifyByAgeAndSymptoms(input, cath.hasCatheter);
+  reasons.push({ step: "classify", ...cls, hasCatheter: cath.hasCatheter });
+  if (!cls.ok) return { ok: false, reasons };
+
+  return {
+    ok: true,
+    infectionDay: inf.infectionDay,
+    category: cls.category,
+    hasCatheter: cath.hasCatheter,
+    reasons
+  };
+}
+
+/* ============================
+   Offline demo data (6 cases)
+   ============================ */
+
+const DEMO_CASES = [
+  {
+    title: "UTI-1a",
+    expected: "1a",
+    patient: { gender: "female" },
+    demoCase: {
+      admitDate:"2025-12-10",
+      labDate:"2025-12-13",
+      symptomDates:[],           // other symptoms none; retention will be added
+      ageYears:40,
+      tempC:38.6,
+      catheterPeriods:[{start:"2025-12-10", end:"2025-12-13"}],
+      urinaryRetentionDate:"2025-12-13",
+      hasBladderScanOrStraightCath:true,
+      nursingNoteText:"膀胱掃描顯示尿量 120 mL，評估單導。",
+      infantKeywordsHit:false,
+      urinaryOtherSymptom:null
+    }
+  },
+  {
+    title: "UTI-1b",
+    expected: "1b",
+    patient: { gender: "male" },
+    demoCase: {
+      admitDate:"2025-12-10",
+      labDate:"2025-12-13",
+      symptomDates:[],
+      ageYears:30,
+      tempC:38.3,
+      catheterPeriods:[],
+      urinaryRetentionDate:"2025-12-13",
+      hasBladderScanOrStraightCath:true,
+      nursingNoteText:"病人排尿困難，膀胱掃描尿量 150 mL，已評估單導。",
+      infantKeywordsHit:false,
+      urinaryOtherSymptom:null
+    }
+  },
+  {
+    title: "UTI-2a",
+    expected: "2a",
+    patient: { gender: "female" },
+    demoCase: {
+      admitDate:"2025-12-10",
+      labDate:"2025-12-13",
+      symptomDates:["2025-12-12"],     // other symptom within window (example)
+      ageYears:0.4,
+      tempC:35.8,                      // low temp OK for infant
+      catheterPeriods:[{start:"2025-12-10", end:"2025-12-13"}],
+      infantKeywordsHit:true,
+      urinaryRetentionDate:null,
+      hasBladderScanOrStraightCath:false,
+      nursingNoteText:"",
+      urinaryOtherSymptom:null
+    }
+  },
+  {
+    title: "UTI-2b",
+    expected: "2b",
+    patient: { gender: "male" },
+    demoCase: {
+      admitDate:"2025-12-10",
+      labDate:"2025-12-13",
+      symptomDates:["2025-12-13"],
+      ageYears:0.7,
+      tempC:38.2,
+      catheterPeriods:[],
+      infantKeywordsHit:true,
+      urinaryRetentionDate:null,
+      hasBladderScanOrStraightCath:false,
+      nursingNoteText:"",
+      urinaryOtherSymptom:null
+    }
+  },
+  {
+    title: "EX-AdmDay12",
+    expected: "exclude",
+    patient: { gender: "female" },
+    demoCase: {
+      admitDate:"2025-12-12",
+      labDate:"2025-12-13",
+      symptomDates:["2025-12-13"],      // has symptom, but admission day rule should exclude (day 2)
+      ageYears:55,
+      tempC:38.5,
+      catheterPeriods:[],
+      urinaryRetentionDate:null,
+      hasBladderScanOrStraightCath:false,
+      nursingNoteText:"",
+      infantKeywordsHit:false,
+      urinaryOtherSymptom:true
+    }
+  },
+  {
+    title: "EX->65FeverOnly",
+    expected: "exclude",
+    patient: { gender: "male" },
+    demoCase: {
+      admitDate:"2025-12-10",
+      labDate:"2025-12-13",
+      symptomDates:[],                 // only fever; no other symptom
+      ageYears:70,
+      tempC:38.6,
+      catheterPeriods:[],
+      urinaryRetentionDate:null,
+      hasBladderScanOrStraightCath:false,
+      nursingNoteText:"",
+      infantKeywordsHit:false,
+      urinaryOtherSymptom:false        // key for exclusion
+    }
+  },
+];
+
+/* ============================
+   UI helpers
+   ============================ */
+
+function el(id){ return document.getElementById(id); }
+
+function escapeHtml(s) {
+  return (s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+function genderZh(g) {
+  if (g === "male") return "男";
+  if (g === "female") return "女";
+  if (g === "other") return "其他";
+  if (g === "unknown") return "未知";
+  return "—";
+}
+function fmtList(arr) {
+  if (!arr || arr.length === 0) return "—";
+  return arr.join(", ");
+}
+
+function symptomSummary(demoCase){
+  const age = demoCase.ageYears;
+  const temp = demoCase.tempC;
+
+  const tempAbn =
+    (age < 1)
+      ? (temp != null && (temp >= 38.1 || temp <= 35.9))
+      : (temp != null && temp >= 38.1);
+
+  const tempDays = tempAbn ? [demoCase.labDate].filter(Boolean) : [];
+
+  const retentionDay =
+    (demoCase.hasBladderScanOrStraightCath && demoCase.urinaryRetentionDate)
+      ? [demoCase.urinaryRetentionDate]
+      : [];
+
+  const otherDays = Array.from(new Set([...(demoCase.symptomDates || []), ...retentionDay])).sort();
+  return { tempAbn, tempDays, otherDays };
+}
+
+function excludeLabel(result) {
+  const rs = result.reasons || [];
+
+  const adm = rs.find(x => x.step === "admission_day3");
+  if (adm && adm.ok === false) return "❌ 入院兩日內為社區感染 排除";
+
+  const cls = rs.find(x => x.step === "classify");
+  if (cls && cls.ok === false) {
+    if (cls.reason === "age_gt_65_no_catheter_fever_only") {
+      return "❌ >65 歲 無導管 只有發燒沒有其他徵兆 不收案";
+    }
+    if (cls.reason === "infant_temp_not_ok") return "❌ <1 歲：體溫不符合";
+    if (cls.reason === "infant_keywords_not_hit") return "❌ <1 歲：護理關鍵字不足";
+    if (cls.reason === "no_fever_for_age_ge_1") return "❌ ≥1 歲：無發燒 排除";
+    return `❌ ${cls.reason || "不符合收案條件"}`;
+  }
+
+  const sw = rs.find(x => x.step === "symptom_window");
+  if (sw && sw.ok === false) return "❌ ±3 天內無徵象 排除";
+
+  return "❌ 排除";
+}
+
+function keyReason(result){
+  if (result.ok) return `收案：${result.category}；感染日=${result.infectionDay ?? "—"}`;
+  return excludeLabel(result);
+}
+
+function render(){
+  const tbody = el("rows");
+  tbody.innerHTML = "";
+
+  for(const item of DEMO_CASES){
+    const demo = item.title;
+    const expected = item.expected;
+    const pat = item.patient || { gender:"unknown" };
+    const demoCase = JSON.parse(JSON.stringify(item.demoCase));
+
+    const result = evaluateUtiCase(JSON.parse(JSON.stringify(demoCase)));
+    const got = result.ok ? result.category : "exclude";
+    const match = (got === expected);
+
+    const ss = symptomSummary(demoCase);
+    const hasCath = result.hasCatheter === true ? "✅" : "❌";
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <b>${escapeHtml(demo)}</b>
+        <div class="mono">expected: ${escapeHtml(expected)} ／ got: ${escapeHtml(got)}</div>
+        <div class="mono">match: ${match ? "✅" : "⚠️"}</div>
+      </td>
+      <td>
+        <span class="tag">性別：${genderZh(pat.gender)}</span>
+        <span class="tag">年齡：${demoCase.ageYears ?? "—"}</span>
+        <div class="mono" style="margin-top:6px;">
+          溫度：${demoCase.tempC ?? "—"}℃ ／ 入院：${demoCase.admitDate} 
+        </div>
+      </td>
+      <td class="mono">${demoCase.labDate ?? "—"}</td>
+      <td class="mono">${result.infectionDay ?? "—"}</td>
+      <td>${hasCath}</td>
+      <td class="mono">
+        體溫異常：${ss.tempAbn ? "✅" : "❌"} ${fmtList(ss.tempDays)}<br/>
+        其他徵象：${(ss.otherDays.length ? "✅" : "❌")} ${fmtList(ss.otherDays)}
+      </td>
+      <td>
+        ${
+          result.ok
+            ? `<span class="ok">✅ ${escapeHtml(got)}</span>`
+            : `<span class="bad">${escapeHtml(excludeLabel(result))}</span>`
+        }
+      </td>
+      <td class="mono">${escapeHtml(keyReason(result))}</td>
+      <td>
+        <details>
+          <summary>展開</summary>
+          <pre class="mono">${escapeHtml(JSON.stringify(result.reasons || [], null, 2))}</pre>
+        </details>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+document.getElementById("btn-run").addEventListener("click", render);
+render();
+</script>
+</body>
+</html>

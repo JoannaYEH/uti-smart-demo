@@ -2,52 +2,92 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <title>UTI SMART Demo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>院內泌尿道感染輔助收案系統</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; }
-    .ok { color: #0a7; font-weight: bold; }
-    .bad { color: #c00; font-weight: bold; }
-    pre { background:#f6f8fa; padding:12px; border-radius:8px; }
+    :root{
+      --bg:#f6f8fa; --card:#fff; --text:#111827; --muted:#6b7280;
+      --border:#e5e7eb; --ok:#2da44e; --bad:#cf222e; --brand:#1f6feb;
+    }
+    body{ margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif; background:var(--bg); color:var(--text); }
+    .container{ max-width:1100px; margin:0 auto; padding:20px; }
+    .header{
+      display:flex; gap:16px; align-items:flex-start; justify-content:space-between;
+      background:var(--card); border:1px solid var(--border); border-radius:16px;
+      padding:16px 18px; box-shadow:0 1px 2px rgba(0,0,0,.04);
+    }
+    .title{ display:flex; gap:12px; align-items:flex-start; }
+    .logo{
+      width:42px; height:42px; border-radius:12px; background:rgba(31,111,235,.12);
+      display:flex; align-items:center; justify-content:center; color:var(--brand); font-weight:800;
+    }
+    h1{ margin:0; font-size:20px; letter-spacing:.2px; }
+    .subtitle{ margin:4px 0 0; color:var(--muted); font-size:13px; line-height:1.4; }
+    .meta{ text-align:right; }
+    .badge{ display:inline-block; padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-size:12px; font-weight:600;}
+    .meta small{ display:block; margin-top:6px; color:var(--muted); }
+    .actions{ margin:14px 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .btn{
+      border:1px solid var(--border); background:var(--card); color:var(--text);
+      padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:600;
+    }
+    .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+    .btn.link{ text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
+    .hint{ color:var(--muted); font-size:12px; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; background:var(--card);
+      border:1px solid var(--border); border-radius:16px; overflow:hidden; }
+    thead th{ text-align:left; font-size:12px; color:var(--muted); background:#fafafa; border-bottom:1px solid var(--border); padding:10px; }
+    tbody td{ padding:10px; border-bottom:1px solid var(--border); vertical-align:top; font-size:13px; }
+    tbody tr:last-child td{ border-bottom:none; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px; }
+    .ok{ color:var(--ok); font-weight:700; }
+    .bad{ color:var(--bad); font-weight:700; }
   </style>
 </head>
 <body>
-  <h2>UTI SMART on FHIR Demo</h2>
-  <p><a href="cohort.html">→ 打開 6 位病人 Cohort 結果頁</a></p>
-
-  <div id="status">Loading…</div>
-  <pre id="output"></pre>
-  <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
-    <button id="btn-build">建立/重建 6 位 Demo 病人</button>
-    <a href="cohort.html">開啟 Cohort 結果頁</a>
+  <div class="container">
+    <div class="header">
+      <div class="title">
+        <div class="logo">UTI</div>
+        <div>
+          <h1>院內泌尿道感染輔助收案系統</h1>
+          <div class="subtitle">
+            SMART on FHIR Demo｜依感染日、導管、年齡與臨床徵象自動判斷收案資格（1a/1b/2a/2b）
+          </div>
+        </div>
+      </div>
+      <div class="meta">
+        <span class="badge">Demo v0.3</span>
+        <small class="mono">FHIR: <span id="fhir-base">—</span></small>
+      </div>
     </div>
 
-    <script type="module">
-    import { buildSixDemoPatients, getStoredDemoPatients } from "./demo_builder.js";
+    <div class="actions">
+      <button class="btn primary" id="btn-run">重新整理 Cohort</button>
+      <a class="btn link" href="./backup.html">備援工具（建立/重建 Demo 資料）</a>
+      <a class="btn link" href="./offline.html">離線展示（FHIR 連不上時）</a>
+      <span class="hint">若主頁看不到資料，請到「備援工具」重建示範病例，或用「離線展示」給評審看。</span>
+    </div>
 
-    const btn = document.getElementById("btn-build");
+    <!--  cohort 表格-->
+    <table>
+      <thead>
+        <tr>
+          <th>Demo</th>
+            <th>Patient</th>
+            <th>年齡</th>
+            <th>性別</th>
+            <th>採檢日</th>
+            <th>感染日</th>
+            <th>徵象日</th>
+            <th>收案判定</th>
+            <th>收案條件</th>
+            <th>細節</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
 
-    btn.addEventListener("click", async () => {
-        btn.disabled = true;
-        btn.textContent = "建立中…";
-        try {
-        const res = await buildSixDemoPatients();
-        alert(`完成！已建立 ${res.patients.length} 位 demo 病人。\n將開啟 cohort.html`);
-        location.href = "cohort.html";
-        } catch (e) {
-        alert("建立失敗：" + String(e));
-        } finally {
-        btn.disabled = false;
-        btn.textContent = "建立/重建 6 位 Demo 病人";
-        }
-    });
-
-    // 若已存在先前建立的 demo，就顯示提示（可選）
-    const stored = getStoredDemoPatients();
-    if (stored?.patients?.length) {
-        console.log("Stored demo patients:", stored);
-    }
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="./cohort.js"></script>
 </body>
 </html>

@@ -133,6 +133,32 @@ function keyReason(result) {
   : "排除";
 }
 
+function excludeLabel(result) {
+  const rs = result.reasons || [];
+
+  const adm = rs.find(x => x.step === "admission_day3");
+  if (adm && adm.ok === false) {
+    return "❌ 入院兩日內為社區感染 排除";
+  }
+
+  const cls = rs.find(x => x.step === "classify");
+  if (cls && cls.ok === false) {
+    if (cls.reason === "age_gt_65_no_catheter_fever_only") {
+      return "❌ >65 歲 無導管 只有發燒沒有其他徵兆 不收案";
+    }
+    // 其他 classify 失敗就回傳原 reason（避免漏掉）
+    return `❌ ${cls.reason || "不符合收案條件"}`;
+  }
+
+  const inf = rs.find(x => x.step === "infection_day");
+  if (inf && inf.ok === false) {
+    return "❌ ±3 天內無徵象 排除";
+  }
+
+  return "❌ 排除";
+}
+
+
 function compactReasons(result) {
   const rs = result.reasons || [];
   const pick = [
@@ -177,13 +203,19 @@ function renderRow(demo, patientRef, patient, demoCase, result) {
         </td>
       `;
     })()}
-    <td>${result.ok ? `<span class="ok">✅ ${got}</span>` : `<span class="bad">❌ exclude</span>`}</td>
+    <td>
+      ${
+        result.ok
+          ? `<span class="ok">✅ ${got}</span>`
+          : `<span class="bad">${excludeLabel(result)}</span>`
+      }
+    </td>
     <td class="mono">${inferSymptomSignal(demoCase, result)}</td>
     <td>
       <details>
         <summary>展開</summary>
         <pre class="mono" style="white-space:pre-wrap;margin-top:6px;">
-${escapeHtml(JSON.stringify(compactReasons(result), null, 2))}
+          ${escapeHtml(JSON.stringify(compactReasons(result), null, 2))}
         </pre>
       </details>
     </td>
