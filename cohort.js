@@ -21,9 +21,29 @@ async function fetchJson(url) {
 }
 
 function extractDemoCase(patient) {
-  const ext = (patient.extension || []).find(e => e.url === EXT_URL);
-  if (!ext?.valueString) return null;
-  try { return JSON.parse(ext.valueString); } catch { return null; }
+  const exts = patient.extension || [];
+  // 1) 先用完全相等
+  let ext = exts.find(e => e.url === EXT_URL);
+
+  // 2) 容錯：只要包含 uti-demo-input 就算（避免 EXT_URL 字串微小不一致）
+  if (!ext) {
+    ext = exts.find(e => (e.url || "").includes("uti-demo-input"));
+  }
+
+  if (!ext) {
+    return { ok: false, reason: "missing_extension", urls: exts.map(e => e.url).filter(Boolean) };
+  }
+
+  const s = ext.valueString;
+  if (!s) {
+    return { ok: false, reason: "missing_valueString", url: ext.url };
+  }
+
+  try {
+    return { ok: true, demoCase: JSON.parse(s), url: ext.url };
+  } catch (e) {
+    return { ok: false, reason: "valueString_not_json", url: ext.url, head: String(s).slice(0, 120) };
+  }
 }
 
 function escapeHtml(s) {
@@ -33,34 +53,149 @@ function escapeHtml(s) {
     .replaceAll(">", "&gt;");
 }
 
-function renderRow(demo, patientRef, result) {
+function genderZh(g) {
+  if (g === "male") return "男";
+  if (g === "female") return "女";
+  if (g === "other") return "其他";
+  if (g === "unknown") return "未知";
+  return "—";
+}
+
+function fmtList(arr) {
+  if (!arr || arr.length === 0) return "—";
+  return arr.join(", ");
+}
+
+function symptomSummary(demoCase) {
+  const age = demoCase.ageYears;
+  const temp = demoCase.tempC;
+
+  const tempAbn =
+    (age < 1)
+      ? (temp != null && (temp >= 38.1 || temp <= 35.9))
+      : (temp != null && temp >= 38.1);
+
+  // demo 先以 labDate 當作體溫異常日（之後再改成 tempAbnormalDates）
+  const tempDays = tempAbn ? [demoCase.labDate].filter(Boolean) : [];
+
+  // 把「尿滯留徵象」視為其他徵象的一種，加入徵象日
+  const retentionDay =
+    (demoCase.hasBladderScanOrStraightCath && demoCase.urinaryRetentionDate)
+      ? [demoCase.urinaryRetentionDate]
+      : [];
+
+  const nurseDays = Array.from(new Set([
+    ...(demoCase.symptomDates || []),
+    ...retentionDay
+  ])).sort();
+
+  return { tempAbn, tempDays, nurseDays };
+}
+
+
+function inferSymptomSignal(demoCase, result) {
+  const age = demoCase.ageYears;
+  const temp = demoCase.tempC;
+
+  if (age < 1) {
+    const tempFlag = (temp != null) && (temp >= 38.1 || temp <= 35.9);
+    const kw = !!demoCase.infantKeywordsHit;
+    return `嬰兒：體溫${tempFlag ? "✅" : "❌"}＋關鍵字${kw ? "✅" : "❌"}｜導管${result.hasCatheter ? "✅" : "❌"}`;
+  }
+
+  const fever = (temp != null) && (temp >= 38.1);
+  const hasSymptom =  (demoCase.symptomDates && demoCase.symptomDates.length > 0)
+  || (demoCase.hasBladderScanOrStraightCath && (demoCase.urinaryRetentionDate || "").length > 0);
+  const gt65NoCath = (age > 65) && (result.hasCatheter === false);
+  const other = !!demoCase.urinaryOtherSymptom;
+
+  if (gt65NoCath) {
+    const otherSym = !!demoCase.urinaryOtherSymptom
+    || (!!demoCase.hasBladderScanOrStraightCath && !!demoCase.urinaryRetentionDate);
+    return `≥1歲：發燒${fever ? "✅" : "❌"}；徵象${otherSym ? "✅" : "❌"}｜導管${result.hasCatheter ? "✅" : "❌"}`;
+  }
+  return `≥1歲：發燒${fever ? "✅" : "❌"}；徵象${hasSymptom ? "✅" : "❌"}｜導管${result.hasCatheter ? "✅" : "❌"}`;
+
+}
+
+function keyReason(result) {
+  const rs = result.reasons || [];
+  const cls = rs.find(x => x.step === "classify");
+  if (cls && cls.ok === false) return cls.reason || "classify_failed";
+
+  const adm = rs.find(x => x.step === "admission_day3");
+  if (adm && adm.ok === false) return `排除：入院第 ${adm.dayIndex} 天 (<3)`;
+
+  const inf = rs.find(x => x.step === "infection_day");
+  if (inf && inf.ok === false) return "排除：±3天徵象不足";
+
+  return result.ok ? `收案：${result.category}；感染日=${result.infectionDay ?? "—"}`
+  : "排除";
+}
+
+function compactReasons(result) {
+  const rs = result.reasons || [];
+  const pick = [
+    "infection_day",
+    "admission_day3",
+    "catheter",
+    "classify",
+    "urinary_retention_symptomdate",
+    "urinary_retention"
+  ];
+  return rs.filter(x => pick.includes(x.step));
+}
+
+function renderRow(demo, patientRef, patient, demoCase, result) {
+  
+  result = result ?? { ok: false, reasons: [{ step: "guard", ok: false, reason: "result_undefined" }] };
+
   const tbody = el("rows");
   const tr = document.createElement("tr");
+
   const got = result.ok ? result.category : "exclude";
   const match = got === demo.expected;
 
   tr.innerHTML = `
-    <td><b>${demo.title}</b><div class="mono">expected: ${demo.expected}</div></td>
-    <td class="mono">${patientRef}</td>
-    <td>${result.ok ? `<span class="ok">✅ ${got}</span>` : `<span class="bad">❌ exclude</span>`}
+    <td>
+      <b>${demo.title}</b>
+      <div class="mono">expected: ${demo.expected}</div>
       <div class="mono">match: ${match ? "✅" : "⚠️"}</div>
     </td>
-    <td class="mono">${result.infectionDay ?? ""}</td>
-    <td class="mono">${result.hasCatheter ?? ""}</td>
-    <td class="mono">${result.ok ? "included" : "excluded"}</td>
+    <td class="mono">${patientRef}</td>
+    <td class="mono">${demoCase.ageYears ?? "—"}</td>
+    <td>${genderZh(patient.gender)}</td>
+    <td class="mono">${demoCase.labDate ?? "—"}</td>
+    <td class="mono">${result.infectionDay ?? "—"}</td>
+    ${(() => {
+      const s = symptomSummary(demoCase);
+      return `
+        <td class="mono">
+          體溫異常：${s.tempAbn ? "✅" : "❌"} ${fmtList(s.tempDays)}
+          <br/>
+          其他徵象：${(s.nurseDays.length ? "✅" : "❌")} ${fmtList(s.nurseDays)}
+        </td>
+      `;
+    })()}
+    <td>${result.ok ? `<span class="ok">✅ ${got}</span>` : `<span class="bad">❌ exclude</span>`}</td>
+    <td class="mono">${inferSymptomSignal(demoCase, result)}</td>
     <td>
-      <details><summary>展開</summary>
-        <pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;">${escapeHtml(JSON.stringify(result.reasons || [], null, 2))}</pre>
+      <details>
+        <summary>展開</summary>
+        <pre class="mono" style="white-space:pre-wrap;margin-top:6px;">
+${escapeHtml(JSON.stringify(compactReasons(result), null, 2))}
+        </pre>
       </details>
     </td>
   `;
   tbody.appendChild(tr);
 }
 
+
 function renderFatal(msg) {
   const tbody = el("rows");
   const tr = document.createElement("tr");
-  tr.innerHTML = `<td colspan="7" class="mono" style="color:#c00;">${escapeHtml(msg)}</td>`;
+  tr.innerHTML = `<td colspan="10" class="mono" style="color:#c00;">${escapeHtml(msg)}</td>`;
   tbody.appendChild(tr);
 }
 
@@ -85,21 +220,27 @@ async function run() {
       const pid = String(demo.patientId ?? "");
       const patientRef = `Patient/${pid}`;
 
-      try {
-        const pat = await fetchJson(`${FHIR_BASE}/Patient/${pid}`);
-        const demoCase = extractDemoCase(pat);
+      let patient = { gender: "unknown" };
+      let demoCase = {};
 
-        if (!demoCase) {
-          renderRow(demo, patientRef, { ok: false, reasons: [{ step: "load_demoCase", ok: false, reason: "missing_extension" }] });
+      try {
+        patient  = await fetchJson(`${FHIR_BASE}/Patient/${pid}`);
+        const ex  = extractDemoCase(patient);
+
+        if (!ex.ok) {
+          renderRow(demo, patientRef, patient, {}, { ok: false, reasons: [{ step: "load_demoCase", ok: false, ...ex }]  });
           continue;
         }
 
+
+        demoCase = ex.demoCase;
+
         const input = JSON.parse(JSON.stringify(demoCase));
         const result = evaluateUtiCase(input);
-        renderRow(demo, patientRef, result);
+        renderRow(demo, patientRef, patient, demoCase, result);
 
       } catch (e) {
-        renderRow(demo, patientRef, { ok: false, reasons: [{ step: "fetch_patient", ok: false, error: String(e) }] });
+        renderRow(demo, patientRef, patient, demoCase, { ok: false, reasons: [{ step: "fetch_patient", ok: false, error: String(e) }] });
       }
     }
   } catch (e) {

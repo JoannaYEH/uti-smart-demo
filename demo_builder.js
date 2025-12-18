@@ -6,7 +6,7 @@ const DEMOS = [
     admitDate:"2025-12-10", labDate:"2025-12-13", symptomDates:[],
     ageYears:40, tempC:38.6,
     catheterPeriods:[{start:"2025-12-10", end:"2025-12-13"}],
-    urinaryRetentionDate:"2025-12-12", hasBladderScanOrStraightCath:true,
+    urinaryRetentionDate:"2025-12-13", hasBladderScanOrStraightCath:true,
     nursingNoteText:"膀胱掃描顯示尿量 120 mL，評估單導。",
     infantKeywordsHit:false, urinaryOtherSymptom:null
   }},
@@ -14,7 +14,7 @@ const DEMOS = [
     admitDate:"2025-12-10", labDate:"2025-12-13", symptomDates:[],
     ageYears:30, tempC:38.3,
     catheterPeriods:[],
-    urinaryRetentionDate:"2025-12-12", hasBladderScanOrStraightCath:true,
+    urinaryRetentionDate:"2025-12-13", hasBladderScanOrStraightCath:true,
     nursingNoteText:"病人排尿困難，膀胱掃描尿量 150 mL，已評估單導。",
     infantKeywordsHit:false, urinaryOtherSymptom:null
   }},
@@ -43,12 +43,21 @@ const DEMOS = [
     nursingNoteText:"", urinaryOtherSymptom:true
   }},
   { title: "EX->65FeverOnly", expected: "exclude", demoCase: {
-    admitDate:"2025-12-10", labDate:"2025-12-13", symptomDates:["2025-12-13"],
-    ageYears:70, tempC:38.6,
-    catheterPeriods:[],
+    admitDate:"2025-12-10",
+    labDate:"2025-12-13",
+    // ✅ 只有發燒：沒有任何其他徵象日
+    symptomDates: [],
+    ageYears:70,
+    tempC:38.6,
+    // ✅ 無導管
+    catheterPeriods: [],
     infantKeywordsHit:false,
-    urinaryRetentionDate:null, hasBladderScanOrStraightCath:false,
-    nursingNoteText:"", urinaryOtherSymptom:false
+    // ✅ 不要尿滯留徵象（否則會被視為其他泌尿徵象）
+    urinaryRetentionDate:null,
+    hasBladderScanOrStraightCath:false,
+    nursingNoteText:"",
+    // ✅ 明確表示沒有其他泌尿徵象（對 >65 無導管 的關鍵）
+    urinaryOtherSymptom:false
   }},
 ];
 
