@@ -1,7 +1,7 @@
 import { evaluateUtiCase } from "./uti_rules.js";
 import { getStoredDemoPatients } from "./demo_builder.js";
 
-import { FHIR_BASE, EXT_URL } from "./config.js";
+import { FHIR_BASE, FHIR_BASE_DISPLAY, EXT_URL } from "./config.js";
 
 const FALLBACK = [
   { title: "UTI-1a", patientId: "672841", expected: "1a" },
@@ -243,7 +243,7 @@ async function run() {
   renderFatal("Loading…（若一直停在這裡，請看 Console 錯誤）");
 
   try {
-    el("fhir-base").textContent = FHIR_BASE;
+    el("fhir-base").textContent = FHIR_BASE_DISPLAY;
     el("rows").innerHTML = "";
 
     const DEMO_PATIENTS = getList();
