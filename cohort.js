@@ -16,7 +16,26 @@ const FALLBACK = [
 
 function el(id) { return document.getElementById(id); }
 
+// --- Auth helpers (optional SMART token) ---
+function setTextIfExists(id, text) {
+  const node = el(id);
+  if (node) node.textContent = text;
+}
+// Try to get SMART access token (only works when launched via SMART OAuth2)
+async function getAuthHeaderOptional() {
+  try {
+    // FHIR.oauth2.ready() exists only when fhirclient is loaded AND launch flow is completed
+    const client = await FHIR.oauth2.ready();
+    const token = client?.state?.tokenResponse?.access_token;
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch (e) {
+    // ignore: not launched via SMART, or library not loaded on this page
+  }
+  return {};
+}
+
 async function fetchJson(url) {
+  const auth = await getAuthHeaderOptional(); // may be {}
   const r = await fetch(url, { headers: { Accept: "application/fhir+json" } });
   if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
   return r.json();
@@ -253,6 +272,19 @@ async function run() {
     // Step 1: 顯示給評審看的 base（THAS 直連）
     el("fhir-base").textContent = FHIR_BASE_DISPLAY;
     el("rows").innerHTML = "";
+
+    // 顯示 token status
+    // Show token status (optional). Add <span id="auth-status"></span> in cohort.html if you want it visible.
+    const auth = await getAuthHeaderOptional();
+    const s = el("auth-status");
+
+    console.log("[SMART token header]", auth);
+
+    if (s) {
+      s.textContent = auth.Authorization ? "Token：已取得（SMART Launch）" : "Token：未取得（匿名/備援模式）";
+      s.className = "mono " + (auth.Authorization ? "status-ok" : "status-bad");
+    }
+    // setTextIfExists("auth-status", auth.Authorization ? "Token：已取得（SMART Launch）" : "Token：未取得（匿名/備援模式）");
 
     // Step 2: 取得 demo patient 清單
     // - 先看 localStorage（demo_builder 建完會存）

@@ -42,6 +42,8 @@
     .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px; }
     .ok{ color:var(--ok); font-weight:700; }
     .bad{ color:var(--bad); font-weight:700; }
+    .status-ok { color: var(--ok); font-weight: 700; }
+    .status-bad { color: var(--bad); font-weight: 700; }
   </style>
 </head>
 <body>
@@ -59,6 +61,7 @@
       <div class="meta">
         <span class="badge">Demo v0.3</span>
         <small class="mono">FHIR: <span id="fhir-base">—</span></small>
+        <small class="mono" id="auth-status">Token：—</small>
       </div>
     </div>
 
@@ -87,7 +90,7 @@
       </thead>
       <tbody id="rows"></tbody>
     </table>
-
+    <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
     <script type="module" src="./cohort.js"></script>
 </body>
 </html>

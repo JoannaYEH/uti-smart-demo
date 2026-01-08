@@ -134,6 +134,10 @@ export function getStoredDemoPatients() {
 
 
 export async function buildOrRebuildDemoPatients() {
-  
-  return await buildSixDemoPatients();//getStoredDemoPatients();
+  // If we already have demo patient IDs stored locally, reuse them.
+  const stored = getStoredDemoPatients();
+  if (stored?.patients?.length) return stored;
+
+  // Otherwise create (POST) 6 demo patients and store IDs to localStorage.
+  return await buildSixDemoPatients();
 }
