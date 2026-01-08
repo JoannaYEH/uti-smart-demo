@@ -1,6 +1,9 @@
 // uti_rules.js
 // UTI rule-tree engine (front-end runnable, explainable output)
 
+/*
+日期工具
+*/
 function toDateOnly(d) {
   // accept "YYYY-MM-DD" or Date
   if (d instanceof Date) return d;
@@ -30,6 +33,7 @@ function pickEarliest(dates) {
 }
 
 /**
+ * 決定感染日（徵象在檢驗日前→取徵象日；在後→取檢驗日）
  * Determine infection day based on symptom dates within window around lab date.
  * Rules:
  * - window: labDate-3 ~ labDate+3 must contain symptom(s)
@@ -53,6 +57,11 @@ export function computeInfectionDay(labDate, symptomDates) {
   return { ok: true, infectionDay: earliest, rule: "symptom_before_lab", window: { start, end }, inWindow };
 }
 
+
+/*
+  症狀視窗規則：
+  在檢驗日 ±3 天內，必須有「其他徵象」或「體溫異常」
+*/
 function symptomWindowOk(labDate, symptomDates, tempC, ageYears) {
   // 在 ±3 天視窗內，若有「其他徵象」則 OK
   const start = addDays(labDate, -3);
@@ -74,6 +83,7 @@ function symptomWindowOk(labDate, symptomDates, tempC, ageYears) {
 }
 
 /**
+ * 入院第 3 天（含）才評估（第1-2天排除）
  * Admission day rule:
  * - admitDay = day 1
  * - evaluate only if infectionDay >= admitDate + 2 days (i.e., day 3 or later)
@@ -85,6 +95,7 @@ export function passesAdmissionDay3(admitDate, infectionDay) {
 }
 
 /**
+ * 導管規則（≥3日，感染日落在期間內或拔除隔天）
  * Catheter rule:
  * Input catheterPeriods: [{start:"YYYY-MM-DD", end:"YYYY-MM-DD"}] inclusive
  * "Has catheter for case" if:
@@ -113,6 +124,10 @@ export function catheterStatus(infectionDay, catheterPeriods) {
 }
 
 /**
+ * 分類 1a/1b/2a/2b
+ * <1歲：體溫異常 + 嬰兒關鍵字 → 2a/2b（依導管）
+ * >=1歲：發燒（>=38.1）必須成立
+ * >65 且無導管：不能只有發燒，需要 urinaryOtherSymptom（或尿滯留徵象推導）
  * Age group and symptom/temperature conditions.
  * caseData:
  * {
@@ -149,6 +164,17 @@ export function classifyByAgeAndSymptoms(caseData, hasCatheter) {
 }
 
 /**
+ * 總入口
+ * 流程順序（非常重要，因為 cohort.js/offline.js 都依賴同一套）：
+ * 尿滯留 → 轉成 symptomDates（urinaryRetentionAsSymptomDate）
+ * 若 urinaryOtherSymptom 未給 → 用 urinaryRetentionSymptom 自動推導
+ * 先過「±3天徵象/體溫」門檻 symptomWindowOk
+ * 再算 infectionDay（有徵象→用 computeInfectionDay；只有體溫→labDate）
+ * 入院第3天門檻 passesAdmissionDay3
+ * 導管判定 catheterStatus
+ * 分類 classifyByAgeAndSymptoms
+ * 回傳 explainable reasons[]（給 UI 展開）
+ * 
  * Main evaluation entry.
  * input:
  * {

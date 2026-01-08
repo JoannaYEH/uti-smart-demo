@@ -1,3 +1,5 @@
+// 離線 demo 的主程式
+
 import { evaluateUtiCase } from "./uti_rules.js";
 
 const DEMOS = [

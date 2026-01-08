@@ -3,6 +3,8 @@ import { getStoredDemoPatients } from "./demo_builder.js";
 
 import { FHIR_BASE, FHIR_BASE_DISPLAY, EXT_URL } from "./config.js";
 
+
+// 如果 localStorage 沒有，就用這份固定 patientId
 const FALLBACK = [
   { title: "UTI-1a", patientId: "672841", expected: "1a" },
   { title: "UTI-1b", patientId: "672842", expected: "1b" },
@@ -20,6 +22,8 @@ async function fetchJson(url) {
   return r.json();
 }
 
+
+// 從 Patient.extension 抽 demoCase JSON
 function extractDemoCase(patient) {
   const exts = patient.extension || [];
   // 1) 先用完全相等
@@ -237,17 +241,25 @@ function getList() {
   return list ?? FALLBACK;
 }
 
+
+// 主流程（顯示 base → 決定 demo 清單 → 抓 patient → 解析 demoCase → 跑規則 → render）
 async function run() {
   // 先塞一列，保證你看到「JS 有跑」
+  // Step 0: UI 先顯示 Loading，避免空白
   el("rows").innerHTML = "";
   renderFatal("Loading…（若一直停在這裡，請看 Console 錯誤）");
 
   try {
+    // Step 1: 顯示給評審看的 base（THAS 直連）
     el("fhir-base").textContent = FHIR_BASE_DISPLAY;
     el("rows").innerHTML = "";
 
+    // Step 2: 取得 demo patient 清單
+    // - 先看 localStorage（demo_builder 建完會存）
+    // - 沒有就用 FALLBACK 固定 id
     const DEMO_PATIENTS = getList();
 
+    // Step 3: 逐一跑每個 demo patient
     for (const demo of DEMO_PATIENTS) {
       const pid = String(demo.patientId ?? "");
       const patientRef = `Patient/${pid}`;
@@ -256,31 +268,38 @@ async function run() {
       let demoCase = {};
 
       try {
+        // Step 3-1: 【FHIR】抓 Patient
         patient  = await fetchJson(`${FHIR_BASE}/Patient/${pid}`);
+        // Step 3-2: 從 extension 取出 demoCase JSON
         const ex  = extractDemoCase(patient);
 
         if (!ex.ok) {
+          // extension 不存在/或不是 JSON：直接在表格上顯示錯誤
           renderRow(demo, patientRef, patient, {}, { ok: false, reasons: [{ step: "load_demoCase", ok: false, ...ex }]  });
           continue;
         }
 
-
+        // Step 3-3: 跑規則引擎（重要：深拷貝避免 evaluate 修改 input）
         demoCase = ex.demoCase;
 
         const input = JSON.parse(JSON.stringify(demoCase));
         const result = evaluateUtiCase(input);
+
+        // Step 3-4: 畫到表格
         renderRow(demo, patientRef, patient, demoCase, result);
 
       } catch (e) {
+        // Step 3-5: 任何抓取/解析錯誤，都落到這裡顯示在表格
         renderRow(demo, patientRef, patient, demoCase, { ok: false, reasons: [{ step: "fetch_patient", ok: false, error: String(e) }] });
       }
     }
   } catch (e) {
+    // Step 4: cohort.js 整支異常
     el("rows").innerHTML = "";
     renderFatal("cohort.js crashed: " + String(e));
     console.error(e);
   }
 }
-
+// Step 5: 綁定按鈕＆自動跑一次
 el("btn-run").addEventListener("click", run);
 run();
