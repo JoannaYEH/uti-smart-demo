@@ -1,55 +1,245 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <title>UTI Demo Cohort</title>
+  <title>院內泌尿道感染（UTI）輔助收案系統｜Cohort 檢視</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:,">
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; }
-    h2 { margin-bottom: 8px; }
-    .hint { color:#555; margin-bottom: 16px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ddd; padding: 10px; vertical-align: top; }
-    th { background: #f6f8fa; text-align: left; }
-    .ok { color: #0a7; font-weight: 700; }
-    .bad { color: #c00; font-weight: 700; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    details { max-width: 720px; }
-    .toolbar { display:flex; gap:10px; align-items:center; margin: 12px 0 18px; flex-wrap: wrap; }
-    button { padding: 8px 12px; border-radius: 10px; border: 1px solid #ccc; background:#fff; cursor:pointer; }
-    button:hover { background:#f6f8fa; }
-    input { padding: 8px 10px; border-radius: 10px; border: 1px solid #ccc; min-width: 420px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", Arial, sans-serif;
+      margin: 20px;
+      line-height: 1.5;
+    }
+    h1 {
+      margin-bottom: 6px;
+    }
+    .sub {
+      color: #555;
+      margin-bottom: 16px;
+    }
+    .box {
+      border: 1px solid #ddd;
+      padding: 12px 14px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      background: #fafafa;
+    }
+    .box h3 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 1.05em;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    .meta {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .meta div {
+      font-size: 0.95em;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 12px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px 10px;
+      vertical-align: top;
+    }
+    th {
+      background: #f0f0f0;
+      text-align: left;
+      white-space: nowrap;
+    }
+    details summary {
+      cursor: pointer;
+      color: #0066cc;
+    }
+    .note {
+      font-size: 0.9em;
+      color: #555;
+    }
+    /* --- Detail panel (right column) --- */
+    .detail-panel {
+      display: grid;
+      gap: 8px;
+    }
+
+    .evidence-card {
+      border: 1px solid #e5e7eb;
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+
+    .evidence-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .evidence-desc {
+      color: #64748b;
+      font-size: 12px;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    .evidence-item {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 10px;
+      padding: 4px 0;
+      border-top: 1px dashed #e5e7eb;
+    }
+
+    .evidence-item:first-of-type {
+      border-top: none;
+    }
+
+    .evidence-id {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .evidence-note {
+      color: #64748b;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    /* 固定前幾欄寬度，讓細節欄吃剩下的空間 */
+    th:nth-child(1), td:nth-child(1) { width: 220px; }  /* 案例 */
+    th:nth-child(2), td:nth-child(2) { width: 50px; }   /* 年齡 */
+    th:nth-child(3), td:nth-child(3) { width: 50px; }   /* 性別 */
+    th:nth-child(4), td:nth-child(4) { width: 90px; }   /* 採檢日 */
+    th:nth-child(5), td:nth-child(5) { width: 90px; }   /* 感染日 */
+    th:nth-child(6), td:nth-child(6) { width: 90px; }   /* 徵象日 */
+    th:nth-child(7), td:nth-child(7) { width: 90px; }   /* 收案判定 */
+    th:nth-child(8), td:nth-child(8) { width: 220px; }  /* 收案原因 */
+
+    /* 最後一欄：細節，自動撐滿 */
+    th:last-child, td:last-child {
+      width: auto;
+    }
+
+    /* 細節欄文字不要太擠 */
+    td:last-child {
+      padding: 12px 14px;
+    }
   </style>
 </head>
+
 <body>
-  <h2>UTI SMART Demo — Cohort Results</h2>
-  <div class="hint">
-    讀取 THAS FHIR 的 6 位 demo Patient（從 extension 取出 demoCase），逐一套用前端規則引擎並顯示結果。
+
+  <h1>院內泌尿道感染（UTI）輔助收案系統</h1>
+  <div class="sub">
+    Cohort 檢視頁（SMART on FHIR 示範）
   </div>
 
-  <div class="toolbar">
-    <button id="btn-run">重新計算</button>
-    <span>FHIR Base:</span>
-    <span class="mono" id="fhir-base">https://thas.mohw.gov.tw/v/r4/fhir</span>
+  <!-- 系統說明（給評審看的重點） -->
+  <div class="box">
+    <h3>📌 系統說明</h3>
+    <p>
+      本頁面展示「院內泌尿道感染（UTI）輔助收案系統」之示範收案結果。
+      系統以 <b>FHIR / TW Core 相容之結構化醫療資料</b> 為基礎，
+      搭配可解釋的收案規則，引導感染管制人員快速完成個案判定。
+    </p>
+    <p>
+      為確保競賽展示之穩定性，本系統採用 <b>雙軌資料策略</b>：
+    </p>
+    <ul>
+      <li>
+        <b>主要路徑（TW Core 相容）</b>：  
+        使用 <span class="mono">Encounter</span>、<span class="mono">Observation</span> 等
+        FHIR 結構化資源，作為可追溯之判斷依據。
+      </li>
+      <li>
+        <b>備援路徑（Demo 穩定性）</b>：  
+        當沙盒或網路狀況不穩時，系統仍可由
+        <span class="mono">Patient.extension</span> 中之示範資料進行判斷，
+        不影響功能展示。
+      </li>
+    </ul>
   </div>
 
+  <!-- 系統狀態 -->
+  <div class="box">
+    <h3>🔎 系統狀態</h3>
+    <div class="meta">
+      <div>
+        <b>FHIR 伺服器：</b>
+        <span id="fhir-base" class="mono">—</span>
+      </div>
+      <div>
+        <b>SMART 驗證狀態：</b>
+        <span id="auth-status" class="mono">—</span>
+      </div>
+    </div>
+    <div class="note">
+      ※ 本示範僅讀取系統自行建立之 FHIR 資源（以 resource ID 精準讀取），
+      不使用搜尋（search）機制，以避免沙盒中既有資料干擾。
+    </div>
+  </div>
+
+  <!-- 操作說明 -->
+  <div class="box">
+    <h3>🧭 判斷邏輯摘要</h3>
+    <ul>
+      <li>依年齡區分收案邏輯（&lt;1 歲 / ≥1 歲）。</li>
+      <li>評估體溫異常、泌尿道相關症狀與其發生時序。</li>
+      <li>判斷是否為導管相關感染（依導管置放天數與感染日關係）。</li>
+      <li>所有判斷結果均可回溯至對應之 FHIR 資源或示範資料來源。</li>
+    </ul>
+  </div>
+
+  <!-- 操作 -->
+  <div style="margin-bottom: 12px;">
+    <button id="btn-run">重新載入 Cohort</button>
+  </div>
+
+  <!-- 結果表格 -->
   <table>
     <thead>
       <tr>
-         <th>Demo</th>
-          <th>Patient</th>
-          <th>年齡</th>
-          <th>性別</th>
-          <th>採檢日</th>
-          <th>感染日</th>
-          <th>徵象日</th>
-          <th>收案判定</th>
-          <th>收案條件</th>
-          <th>細節</th>
+        <th>示範案例</th>
+        <th>Patient</th>
+        <th>判斷結果</th>
+        <th>感染日</th>
+        <th>FHIR 結構化證據</th>
+        <th>判斷依據（可解釋）</th>
       </tr>
     </thead>
-    <tbody id="rows"></tbody>
+    <tbody id="rows">
+      <!-- cohort.js 會動態填入 -->
+    </tbody>
   </table>
-  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
-  <script type="module" src="cohort.js"></script>
+
+  <div class="note" style="margin-top:12px;">
+    說明：
+    <ul>
+      <li>
+        「FHIR 結構化證據」欄位顯示本系統實際使用之
+        <span class="mono">Encounter</span>、
+        <span class="mono">Observation</span> 等資源識別碼，
+        以證明 TW Core / FHIR 相容性。
+      </li>
+      <li>
+        若僅顯示「extension」，表示該案例以示範資料進行判斷，
+        不影響整體規則與流程展示。
+      </li>
+    </ul>
+  </div>
+
+  <!-- 主程式 -->
+  <script type="module" src="./cohort.js"></script>
+
 </body>
 </html>
