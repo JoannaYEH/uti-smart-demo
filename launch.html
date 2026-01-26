@@ -14,7 +14,7 @@
 
     FHIR.oauth2.authorize({
       client_id: CLIENT_ID,
-      scope: "launch openid fhirUser patient/*.read",
+      scope: "openid fhirUser user/*.read",//"launch openid fhirUser patient/*.read",
       redirectUri: "index.html"
     });
   </script>
