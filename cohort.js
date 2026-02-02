@@ -7,7 +7,7 @@
 // 4) 規則引擎 evaluateUtiCase 不動
 
 import { evaluateUtiCase } from "./uti_rules.js";
-import { getStoredDemoPatients } from "./demo_builder.js";
+import { getStoredDemoPatients, buildOrRebuildDemoPatients } from "./demo_builder.js";
 import { FHIR_BASE, FHIR_BASE_DISPLAY, EXT_URL } from "./config.js";
 
 const EXCLUDE_REASON_MAP = {
@@ -259,6 +259,9 @@ async function buildEvidenceHtml(demo) {
   // `;
 }
 
+// 辨識是否正在自動建立 demo（避免重複觸發）
+let __AUTO_BUILDING__ = false;
+
 async function run() {
   const tbody = el("rows");
   if (!tbody) return;
@@ -270,13 +273,50 @@ async function run() {
   const authEl = el("auth-status");
   if (authEl) authEl.textContent = await getAuthStatusText();
 
-  const stored = getStoredDemoPatients();
+  // const stored = getStoredDemoPatients();
+  // if (!stored?.patients?.length) {
+  //   const tr = document.createElement("tr");
+  //   tr.innerHTML = `<td colspan="10" class="mono" style="color:#c00">尚未建立 demo 病患，請先點「建立/重建 Demo 資料」</td>`;
+  //   tbody.appendChild(tr);
+  //   return;
+  // }
+
+  let stored = getStoredDemoPatients();
+
+  // 若沒有 localStorage，就自動建立一次 demo
   if (!stored?.patients?.length) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="10" class="mono" style="color:#c00">尚未建立 demo 病患，請先點「建立/重建 Demo 資料」</td>`;
+    tr.innerHTML = `<td colspan="9" class="mono" style="color:#666">首次開啟：正在自動建立 6 位示範病人資料…</td>`;
+    tbody.appendChild(tr);
+
+     // 已經在建立了，避免重複觸發；保留畫面提示即可
+    if (__AUTO_BUILDING__) return;
+    __AUTO_BUILDING__ = true;
+
+    try {
+      // 建立 demo（成功後 demo_builder.js 應該會寫入 localStorage）
+      await buildOrRebuildDemoPatients();
+
+      // 重新讀一次 localStorage
+      stored = getStoredDemoPatients();
+    } catch (e) {
+      tr.innerHTML = `<td colspan="9" class="mono" style="color:#c00">自動建立示範資料失敗：${esc(e.message)}<br/>請改用離線展示或稍後再試。</td>`;
+      return;
+    } finally {
+      __AUTO_BUILDING__ = false;
+    }
+  }
+
+  // 仍然沒有資料就直接終止（保險）
+  if (!stored?.patients?.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="9" class="mono" style="color:#c00">無法取得示範病人資料（localStorage 仍為空）</td>`;
     tbody.appendChild(tr);
     return;
   }
+
+  //  清掉「自動建立中」提示列，避免殘留在表格
+  tbody.innerHTML = "";
 
   for (const demo of stored.patients) {
     const tr = document.createElement("tr");
@@ -353,7 +393,7 @@ async function run() {
             ${esc(demo.patientRef)}
           </div>
         </td>
-        <td colspan="8" style="color:#c00">❌ 錯誤：${esc(e.message)}</td>
+        <td colspan="9" style="color:#c00">❌ 錯誤：${esc(e.message)}</td>
       `;
       tbody.appendChild(tr);
     }
