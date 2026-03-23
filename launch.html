@@ -10,12 +10,13 @@
   <!-- SMART on FHIR JS -->
   <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
   <script>
-    const CLIENT_ID = "my-uti-smart-app-client-id";
+    // const CLIENT_ID = "my-uti-smart-app-client-id";
 
     FHIR.oauth2.authorize({
-      client_id: CLIENT_ID,
+      clientId: "cc344727-6f90-496c-94fd-c7829aa9a51d",//CLIENT_ID
+      clientSecret: "79f04b56b33491716c0880af72cdef7d3f0629111421cedd18353651cd313d9e",
       scope: "openid fhirUser user/*.read",//"launch openid fhirUser patient/*.read",
-      redirectUri: "index.html"
+      redirectUri: "https://joannayeh.github.io/uti-smart-demo/index.html"//index.html
     });
   </script>
 </body>
